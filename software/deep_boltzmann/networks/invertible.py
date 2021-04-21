@@ -1,6 +1,6 @@
 import sys
 import numpy as np
-import keras
+import tensorflow.keras as keras
 import tensorflow as tf
 
 from deep_boltzmann.networks import IndexLayer, connect, nonlinear_transform
@@ -471,6 +471,11 @@ class InvNet(object):
         #return self.log_det_Jxz - self.dim * tf.log(std) - (0.5 / (std**2)) * tf.reduce_sum(self.output_z**2, axis=1)
         return self.log_det_Jxz - (0.5 / (std**2)) * tf.reduce_sum(self.output_z**2, axis=1)
 
+    def log_likelihood_z_uniform(self, std=1.0):
+        """ Returns the log likelihood assuming a uniform distribution on [a,b)
+        """
+        return self.log_det_Jxz - self.dim * (tf.log(std) + 0.5*tf.log(12.0))
+
     def log_likelihood_z_lognormal(self, std=1.0):
         """ Returns the log likelihood of z|x assuming a Normal distribution in z
         """
@@ -541,14 +546,16 @@ class InvNet(object):
                  std=1.0, reg_Jxz=0.0, verbose=1):
         if optimizer is None:
             if clipnorm is None:
-                optimizer = keras.optimizers.adam(lr=lr)
+                optimizer = keras.optimizers.Adam(lr=lr)
             else:
-                optimizer = keras.optimizers.adam(lr=lr, clipnorm=clipnorm)
+                optimizer = keras.optimizers.Adam(lr=lr, clipnorm=clipnorm)
 
         def loss_ML_normal(y_true, y_pred):
             return -self.log_likelihood_z_normal(std=std)
         def loss_ML_lognormal(y_true, y_pred):
             return -self.log_likelihood_z_lognormal(std=std)
+        def loss_ML_uniform(y_true, y_pred):
+            return -self.log_likelihood_z_uniform(std=std)
         def loss_ML_cauchy(y_true, y_pred):
             return -self.log_likelihood_z_cauchy(scale=std)
         def loss_ML_normal_reg(y_true, y_pred):
@@ -573,6 +580,8 @@ class InvNet(object):
                 self.Txz.compile(optimizer, loss=loss_ML_cauchy)
             else:
                 self.Txz.compile(optimizer, loss=loss_ML_cauchy_reg)
+        elif self.prior == 'uniform':
+            self.Txz.compile(optimizer, loss=loss_ML_uniform)
         else:
             raise NotImplementedError('ML for prior ' + self.prior + ' is not implemented.')
 
@@ -615,7 +624,8 @@ class InvNet(object):
         z_std_ = np.sqrt(np.mean(sigma))
         return z_std_
 
-    def sample_z(self, temperature=1.0, nsample=100000, return_energy=False):
+    def sample_z(self, temperature=1.0, nsample=100000, return_energy=False,
+        a=0, b=1):
         """ Samples from prior distribution in x and produces generated x configurations
 
         Parameters:
@@ -624,6 +634,10 @@ class InvNet(object):
             Relative temperature. Equal to the variance of the isotropic Gaussian sampled in z-space.
         nsample : int
             Number of samples
+        a : float
+            Lower limit of sampling interval (only for uniform distribution)
+        b : float
+            Upper limit of sampling interval (only for uniform distribution)
 
         Returns:
         --------
@@ -639,6 +653,10 @@ class InvNet(object):
             sample_z = np.sqrt(temperature) * np.random.randn(nsample, self.dim)
             if return_energy:
                 energy_z = self.dim * np.log(np.sqrt(temperature)) + np.sum(sample_z**2 / (2*temperature), axis=1)
+        elif self.prior == 'uniform':
+            sample_z = np.random.uniform(a,b,(nsample,self.dim))
+            if return_energy:
+                energy_z = self.dim*np.log(abs(b-a))
         elif self.prior == 'lognormal':
             sample_z_normal = np.sqrt(temperature) * np.random.randn(nsample, self.dim)
             sample_z = np.exp(sample_z_normal)
@@ -809,9 +827,9 @@ class EnergyInvNet(InvNet):
                  high_energy=100, max_energy=1e10, temperature=1.0, explore=1.0):
         if optimizer is None:
             if clipnorm is None:
-                optimizer = keras.optimizers.adam(lr=lr)
+                optimizer = keras.optimizers.Adam(lr=lr)
             else:
-                optimizer = keras.optimizers.adam(lr=lr, clipnorm=clipnorm)
+                optimizer = keras.optimizers.Adam(lr=lr, clipnorm=clipnorm)
 
         import numbers
         if isinstance(temperature, numbers.Number):
@@ -952,9 +970,9 @@ class EnergyInvNet(InvNet):
         # build estimator
         if optimizer is None:
             if clipnorm is None:
-                optimizer = keras.optimizers.adam(lr=lr)
+                optimizer = keras.optimizers.Adam(lr=lr)
             else:
-                optimizer = keras.optimizers.adam(lr=lr, clipnorm=clipnorm)
+                optimizer = keras.optimizers.Adam(lr=lr, clipnorm=clipnorm)
 
         # assemble model
         dual_model = keras.models.Model(inputs=inputs, outputs=outputs)

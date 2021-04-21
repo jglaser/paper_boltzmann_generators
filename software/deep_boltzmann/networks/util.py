@@ -1,6 +1,6 @@
 __author__ = 'noe'
 
-import keras
+import tensorflow.keras as keras
 import numpy as np
 
 def connect(input_layer, layers):
