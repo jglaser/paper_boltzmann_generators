@@ -3,7 +3,8 @@ import tensorflow.keras as keras
 import numpy as np
 
 
-def nonlinear_transform(output_size, nlayers=3, nhidden=100, activation='relu', init_outputs=None):
+def nonlinear_transform(output_size, nlayers=3, nhidden=100, activation='relu', init_outputs=None,
+                        activity_regularizer=None):
     """ Generic dense trainable nonlinear transform
 
     Returns the layers of a dense feedforward network with nlayers-1 hidden layers with nhidden neurons
@@ -26,11 +27,13 @@ def nonlinear_transform(output_size, nlayers=3, nhidden=100, activation='relu', 
     """
     M = [keras.layers.Dense(nhidden, activation=activation) for i in range(nlayers-1)]
     if init_outputs is None:
-        final_layer = keras.layers.Dense(output_size, activation='linear')
+        final_layer = keras.layers.Dense(output_size, activation='linear',
+                                                      activity_regularizer=activity_regularizer)
     else:
         final_layer = keras.layers.Dense(output_size, activation='linear',
                                          kernel_initializer=keras.initializers.Zeros(),
-                                         bias_initializer=keras.initializers.Constant(init_outputs))
+                                         bias_initializer=keras.initializers.Constant(init_outputs),
+                                         activity_regularizer=activity_regularizer)
     M += [final_layer]
 
     return M
